@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { Search, BookOpen, Video, Headphones, FileText, Star, Clock, Play, ArrowRight } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
@@ -128,6 +129,7 @@ const typeIcons = {
 }
 
 export default function LearningPage() {
+  const router = useRouter()
   const [activeCategory, setActiveCategory] = useState('all')
   const [search, setSearch] = useState('')
 
@@ -199,7 +201,7 @@ export default function LearningPage() {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: index * 0.07 }}
                 >
-                  <Card className="card-hover overflow-hidden group cursor-pointer">
+                  <Card className="card-hover overflow-hidden group cursor-pointer" onClick={() => router.push(`/dashboard/learning/${course.id}`)}>
                     <div className={`h-36 bg-gradient-to-br ${course.color} flex items-center justify-center relative`}>
                       <span className="text-6xl">{course.image}</span>
                       <div className="absolute top-3 right-3 flex gap-1.5">
@@ -239,12 +241,12 @@ export default function LearningPage() {
                             <span className="font-medium text-teal-600">{course.progress}%</span>
                           </div>
                           <Progress value={course.progress} className="h-1.5" />
-                          <Button size="sm" className="w-full mt-3 gap-1.5">
+                          <Button size="sm" className="w-full mt-3 gap-1.5" onClick={e => { e.stopPropagation(); router.push(`/dashboard/learning/${course.id}`) }}>
                             <Play className="w-3.5 h-3.5" /> Lanjutkan Belajar
                           </Button>
                         </div>
                       ) : (
-                        <Button variant="outline" size="sm" className="w-full gap-1.5">
+                        <Button variant="outline" size="sm" className="w-full gap-1.5" onClick={e => { e.stopPropagation(); router.push(`/dashboard/learning/${course.id}`) }}>
                           Mulai Belajar <ArrowRight className="w-3.5 h-3.5" />
                         </Button>
                       )}
@@ -260,7 +262,7 @@ export default function LearningPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
             {courses.filter(c => c.progress > 0 && c.progress < 100).map((course, index) => (
               <motion.div key={course.id} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.07 }}>
-                <Card className="card-hover">
+                <Card className="card-hover cursor-pointer" onClick={() => router.push(`/dashboard/learning/${course.id}`)}>
                   <CardContent className="p-5">
                     <div className={`w-12 h-12 rounded-2xl bg-gradient-to-br ${course.color} flex items-center justify-center text-2xl mb-3`}>{course.image}</div>
                     <h3 className="font-bold text-sm text-foreground mb-1">{course.title}</h3>
@@ -270,7 +272,7 @@ export default function LearningPage() {
                       <span className="font-medium">{course.progress}%</span>
                     </div>
                     <Progress value={course.progress} className="h-2 mb-3" />
-                    <Button size="sm" className="w-full gap-1.5"><Play className="w-3.5 h-3.5" /> Lanjutkan</Button>
+                    <Button size="sm" className="w-full gap-1.5" onClick={e => { e.stopPropagation(); router.push(`/dashboard/learning/${course.id}`) }}><Play className="w-3.5 h-3.5" /> Lanjutkan</Button>
                   </CardContent>
                 </Card>
               </motion.div>
