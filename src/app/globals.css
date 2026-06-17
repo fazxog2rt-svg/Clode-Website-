@@ -1,0 +1,168 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Amiri:ital,wght@0,400;0,700;1,400;1,700&display=swap');
+
+@layer base {
+  :root {
+    --background: 48 100% 99%;
+    --foreground: 222 47% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+    --primary: 174 80% 26%;
+    --primary-foreground: 48 100% 99%;
+    --secondary: 48 33% 95%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 48 33% 95%;
+    --muted-foreground: 215 16% 47%;
+    --accent: 44 70% 52%;
+    --accent-foreground: 222 47% 11%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 174 20% 88%;
+    --input: 174 20% 88%;
+    --ring: 174 80% 26%;
+    --radius: 0.75rem;
+    --font-inter: 'Inter', sans-serif;
+    --font-amiri: 'Amiri', serif;
+  }
+
+  .dark {
+    --background: 222 47% 7%;
+    --foreground: 48 100% 97%;
+    --card: 222 47% 10%;
+    --card-foreground: 48 100% 97%;
+    --popover: 222 47% 10%;
+    --popover-foreground: 48 100% 97%;
+    --primary: 174 72% 42%;
+    --primary-foreground: 222 47% 7%;
+    --secondary: 222 47% 14%;
+    --secondary-foreground: 48 100% 97%;
+    --muted: 222 47% 14%;
+    --muted-foreground: 215 20% 65%;
+    --accent: 44 70% 52%;
+    --accent-foreground: 222 47% 7%;
+    --destructive: 0 62% 30%;
+    --destructive-foreground: 210 40% 98%;
+    --border: 222 47% 18%;
+    --input: 222 47% 18%;
+    --ring: 174 72% 42%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+@layer components {
+  .glass {
+    @apply bg-white/10 backdrop-blur-md border border-white/20;
+  }
+
+  .glass-dark {
+    @apply bg-black/10 backdrop-blur-md border border-white/10;
+  }
+
+  .gradient-emerald {
+    @apply bg-gradient-to-br from-teal-700 via-emerald-600 to-teal-800;
+  }
+
+  .gradient-gold {
+    @apply bg-gradient-to-br from-yellow-600 via-amber-500 to-yellow-700;
+  }
+
+  .gradient-hero {
+    background: linear-gradient(135deg, #0F766E 0%, #14B8A6 50%, #0F172A 100%);
+  }
+
+  .text-gradient {
+    @apply bg-gradient-to-r from-teal-600 via-emerald-500 to-teal-700 bg-clip-text text-transparent;
+  }
+
+  .text-gradient-gold {
+    @apply bg-gradient-to-r from-yellow-600 via-amber-500 to-yellow-600 bg-clip-text text-transparent;
+  }
+
+  .card-hover {
+    @apply transition-all duration-300 hover:shadow-xl hover:-translate-y-1;
+  }
+
+  .btn-primary {
+    @apply bg-teal-700 hover:bg-teal-800 text-white font-semibold px-6 py-3 rounded-xl transition-all duration-200 hover:shadow-lg hover:shadow-teal-700/25 active:scale-95;
+  }
+
+  .btn-secondary {
+    @apply border-2 border-teal-700 text-teal-700 hover:bg-teal-700 hover:text-white font-semibold px-6 py-3 rounded-xl transition-all duration-200;
+  }
+
+  .section-title {
+    @apply text-3xl md:text-4xl font-bold text-foreground mb-4;
+  }
+
+  .section-subtitle {
+    @apply text-lg text-muted-foreground max-w-2xl mx-auto;
+  }
+
+  .arabic-text {
+    font-family: var(--font-amiri);
+    direction: rtl;
+  }
+
+  .islamic-pattern {
+    background-image: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%230F766E' fill-opacity='0.04'%3E%3Cpath d='M30 30L20 20h20L30 30zm0 0l10 10H20L30 30zm0 0L20 40h20L30 30zm0 0l10-10H20l10 10z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+  }
+
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@layer utilities {
+  .animate-delay-100 { animation-delay: 100ms; }
+  .animate-delay-200 { animation-delay: 200ms; }
+  .animate-delay-300 { animation-delay: 300ms; }
+  .animate-delay-400 { animation-delay: 400ms; }
+  .animate-delay-500 { animation-delay: 500ms; }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #0F766E;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #14B8A6;
+}
+
+/* Selection */
+::selection {
+  background: rgba(15, 118, 110, 0.2);
+  color: #0F766E;
+}
