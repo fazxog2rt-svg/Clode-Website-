@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { Eye, EyeOff, Mail, Lock, User, ArrowRight, CheckCircle2 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -17,6 +18,7 @@ const benefits = [
 ]
 
 export default function RegisterPage() {
+  const router = useRouter()
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [step, setStep] = useState(1)
@@ -33,7 +35,7 @@ export default function RegisterPage() {
     if (step === 1) { setStep(2); return }
     setIsLoading(true)
     await new Promise(r => setTimeout(r, 1500))
-    setIsLoading(false)
+    router.push('/dashboard')
   }
 
   return (

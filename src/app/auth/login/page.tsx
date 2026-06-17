@@ -2,12 +2,14 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { Eye, EyeOff, Mail, Lock, ArrowRight, Sparkles } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 
 export default function LoginPage() {
+  const router = useRouter()
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [form, setForm] = useState({ email: '', password: '' })
@@ -16,7 +18,7 @@ export default function LoginPage() {
     e.preventDefault()
     setIsLoading(true)
     await new Promise(r => setTimeout(r, 1500))
-    setIsLoading(false)
+    router.push('/dashboard')
   }
 
   return (
