@@ -1,12 +1,14 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { motion } from 'framer-motion'
 import { CheckCircle2, Circle, Flame, Trophy, TrendingUp, Calendar, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Progress } from '@/components/ui/progress'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { useAuth } from '@/lib/auth-context'
+import { saveTrackerEntry, getTrackerEntry, TrackerEntry } from '@/lib/db'
 
 const habits = [
   { id: 1, icon: '🕌', label: 'Shalat 5 Waktu', desc: 'Subuh, Dzuhur, Ashar, Maghrib, Isya', target: 5, completed: 4, streak: 14 },
@@ -35,12 +37,109 @@ const monthlyStats = {
   daysActive: 26,
 }
 
+// Habit ID → Firestore habits key mapping (used inline in save/load logic)
+// subuh=Shalat, quran=Tilawah, dzikir=Dzikir, sedekah=Sedekah
+// maghrib=Puasa Sunnah, isya=Hijab, dzuhur=Akhlak (repurposed fields)
+
+function getTodayDate(): string {
+  return new Date().toISOString().split('T')[0]
+}
+
+const LS_KEY = 'tracker_habits'
+
+function loadFromLocalStorage(): number[] {
+  if (typeof window === 'undefined') return [1, 2, 3, 4, 6, 7]
+  try {
+    const stored = localStorage.getItem(LS_KEY)
+    if (stored) return JSON.parse(stored) as number[]
+  } catch {
+    // ignore
+  }
+  return [1, 2, 3, 4, 6, 7]
+}
+
+function saveToLocalStorage(ids: number[]) {
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify(ids))
+  } catch {
+    // ignore
+  }
+}
+
 export default function TrackerPage() {
+  const { user } = useAuth()
   const [checkedHabits, setCheckedHabits] = useState<number[]>([1, 2, 3, 4, 6, 7])
   const [activeWeekDay, setActiveWeekDay] = useState(6)
+  const [loadingHabits, setLoadingHabits] = useState(false)
+  const [savedIndicator, setSavedIndicator] = useState(false)
 
-  const toggleHabit = (id: number) => {
-    setCheckedHabits(prev => prev.includes(id) ? prev.filter(h => h !== id) : [...prev, id])
+  const todayDate = getTodayDate()
+
+  // Load habits on mount
+  useEffect(() => {
+    if (user) {
+      setLoadingHabits(true)
+      getTrackerEntry(user.uid, todayDate)
+        .then((entry) => {
+          if (entry?.habits) {
+            const h = entry.habits
+            // Reconstruct checked IDs from the stored booleans (reverse of save mapping)
+            const checked: number[] = []
+            if (h.subuh)   checked.push(1) // Shalat
+            if (h.quran)   checked.push(2) // Tilawah
+            if (h.dzikir)  checked.push(3) // Dzikir
+            if (h.sedekah) checked.push(4) // Sedekah
+            if (h.maghrib) checked.push(5) // Puasa Sunnah
+            if (h.isya)    checked.push(6) // Menjaga Hijab
+            if (h.dzuhur)  checked.push(7) // Menjaga Akhlak
+            setCheckedHabits(checked)
+          }
+        })
+        .catch((err) => console.error('Failed to load tracker entry:', err))
+        .finally(() => setLoadingHabits(false))
+    } else {
+      setCheckedHabits(loadFromLocalStorage())
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user])
+
+  const showSavedIndicator = useCallback(() => {
+    setSavedIndicator(true)
+    setTimeout(() => setSavedIndicator(false), 2000)
+  }, [])
+
+  const toggleHabit = async (id: number) => {
+    const updatedHabits = checkedHabits.includes(id)
+      ? checkedHabits.filter((h) => h !== id)
+      : [...checkedHabits, id]
+
+    setCheckedHabits(updatedHabits)
+
+    if (user) {
+      // Build a fully-typed TrackerEntry.habits object
+      const habitsObj: TrackerEntry['habits'] = {
+        subuh:   updatedHabits.includes(1),
+        dzuhur:  updatedHabits.includes(7), // Menjaga Akhlak
+        ashar:   false,
+        maghrib: updatedHabits.includes(5), // Puasa Sunnah
+        isya:    updatedHabits.includes(6), // Menjaga Hijab
+        quran:   updatedHabits.includes(2),
+        dzikir:  updatedHabits.includes(3),
+        sedekah: updatedHabits.includes(4),
+      }
+      try {
+        await saveTrackerEntry(user.uid, {
+          date: todayDate,
+          habits: habitsObj,
+          updatedAt: null,
+        })
+        showSavedIndicator()
+      } catch (err) {
+        console.error('Failed to save tracker entry:', err)
+      }
+    } else {
+      saveToLocalStorage(updatedHabits)
+    }
   }
 
   const overallProgress = Math.round((checkedHabits.length / habits.length) * 100)
@@ -56,6 +155,16 @@ export default function TrackerPage() {
           <Badge className="bg-orange-500/10 text-orange-600 border-orange-200 dark:border-orange-800 px-3 py-1.5">
             <Flame className="w-3.5 h-3.5 mr-1" /> 14 Hari Streak
           </Badge>
+          {savedIndicator && (
+            <motion.span
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0 }}
+              className="text-xs text-teal-600 font-medium bg-teal-50 dark:bg-teal-950/20 border border-teal-200 dark:border-teal-800 rounded-full px-3 py-1.5"
+            >
+              Tersimpan ✓
+            </motion.span>
+          )}
         </div>
       </motion.div>
 
@@ -96,7 +205,9 @@ export default function TrackerPage() {
               <div className="flex justify-between items-center mb-3">
                 <div>
                   <p className="font-bold text-foreground">Progress Ibadah Hari Ini</p>
-                  <p className="text-sm text-muted-foreground">Selasa, 17 Juni 2025</p>
+                  <p className="text-sm text-muted-foreground">
+                    {new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+                  </p>
                 </div>
                 <div className="text-3xl font-bold text-teal-600">{overallProgress}%</div>
               </div>
@@ -105,49 +216,55 @@ export default function TrackerPage() {
             </CardContent>
           </Card>
 
-          <div className="space-y-3">
-            {habits.map((habit, index) => {
-              const isChecked = checkedHabits.includes(habit.id)
-              return (
-                <motion.div
-                  key={habit.id}
-                  initial={{ opacity: 0, x: -15 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: index * 0.06 }}
-                >
-                  <Card
-                    className={`cursor-pointer transition-all duration-200 hover:shadow-md ${isChecked ? 'border-teal-300 dark:border-teal-700' : ''}`}
-                    onClick={() => toggleHabit(habit.id)}
+          {loadingHabits ? (
+            <div className="flex items-center justify-center py-12">
+              <div className="animate-spin w-8 h-8 border-2 border-teal-500 border-t-transparent rounded-full" />
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {habits.map((habit, index) => {
+                const isChecked = checkedHabits.includes(habit.id)
+                return (
+                  <motion.div
+                    key={habit.id}
+                    initial={{ opacity: 0, x: -15 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: index * 0.06 }}
                   >
-                    <CardContent className={`p-4 ${isChecked ? 'bg-teal-50/50 dark:bg-teal-950/10' : ''}`}>
-                      <div className="flex items-center gap-4">
-                        <span className="text-3xl">{habit.icon}</span>
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-0.5">
-                            <p className={`font-semibold ${isChecked ? 'text-teal-700 dark:text-teal-400' : 'text-foreground'}`}>{habit.label}</p>
-                            {isChecked && <Badge variant="emerald" className="text-xs">✓ Selesai</Badge>}
-                          </div>
-                          <p className="text-xs text-muted-foreground">{habit.desc}</p>
-                        </div>
-                        <div className="flex items-center gap-3 shrink-0">
-                          <div className="text-right">
-                            <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                              <Flame className="w-3 h-3 text-orange-400" />
-                              <span>{habit.streak} hari</span>
+                    <Card
+                      className={`cursor-pointer transition-all duration-200 hover:shadow-md ${isChecked ? 'border-teal-300 dark:border-teal-700' : ''}`}
+                      onClick={() => toggleHabit(habit.id)}
+                    >
+                      <CardContent className={`p-4 ${isChecked ? 'bg-teal-50/50 dark:bg-teal-950/10' : ''}`}>
+                        <div className="flex items-center gap-4">
+                          <span className="text-3xl">{habit.icon}</span>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-0.5">
+                              <p className={`font-semibold ${isChecked ? 'text-teal-700 dark:text-teal-400' : 'text-foreground'}`}>{habit.label}</p>
+                              {isChecked && <Badge variant="emerald" className="text-xs">✓ Selesai</Badge>}
                             </div>
+                            <p className="text-xs text-muted-foreground">{habit.desc}</p>
                           </div>
-                          {isChecked
-                            ? <CheckCircle2 className="w-7 h-7 text-teal-500" />
-                            : <Circle className="w-7 h-7 text-muted-foreground/30" />
-                          }
+                          <div className="flex items-center gap-3 shrink-0">
+                            <div className="text-right">
+                              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                                <Flame className="w-3 h-3 text-orange-400" />
+                                <span>{habit.streak} hari</span>
+                              </div>
+                            </div>
+                            {isChecked
+                              ? <CheckCircle2 className="w-7 h-7 text-teal-500" />
+                              : <Circle className="w-7 h-7 text-muted-foreground/30" />
+                            }
+                          </div>
                         </div>
-                      </div>
-                    </CardContent>
-                  </Card>
-                </motion.div>
-              )
-            })}
-          </div>
+                      </CardContent>
+                    </Card>
+                  </motion.div>
+                )
+              })}
+            </div>
+          )}
         </TabsContent>
 
         <TabsContent value="weekly" className="mt-6">

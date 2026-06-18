@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Trophy, Users, Flame, CheckCircle2, Star, Crown, TrendingUp } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -8,6 +8,13 @@ import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Progress } from '@/components/ui/progress'
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs'
+import { useAuth } from '@/lib/auth-context'
+import {
+  enrollChallenge as firestoreEnrollChallenge,
+  markChallengeDay as firestoreMarkChallengeDay,
+  getChallenges,
+  ChallengeProgress,
+} from '@/lib/db'
 
 interface Challenge {
   id: number
@@ -47,51 +54,155 @@ function getTodayKey() {
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
 }
 
+function getTodayDate() {
+  const d = new Date()
+  const yyyy = d.getFullYear()
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}`
+}
+
 export default function ChallengePage() {
+  const { user } = useAuth()
+
+  // Local state (used as fallback when not logged in)
   const [enrolled, setEnrolled] = useState<number[]>([])
   const [completions, setCompletions] = useState<Record<string, boolean>>({})
   const [celebrated, setCelebrated] = useState<number | null>(null)
 
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
-      const e = localStorage.getItem('challenge_enrolled')
-      const c = localStorage.getItem('challenge_completions')
-      if (e) setEnrolled(JSON.parse(e))
-      if (c) setCompletions(JSON.parse(c))
-    }
-  }, [])
+  // Firestore data
+  const [firestoreData, setFirestoreData] = useState<ChallengeProgress[]>([])
+  const [loadingFirestore, setLoadingFirestore] = useState(false)
+  const [actionLoading, setActionLoading] = useState<number | null>(null)
 
-  function saveEnrolled(next: number[]) {
+  // Load from Firestore when logged in, localStorage otherwise
+  const loadFirestoreData = useCallback(async () => {
+    if (!user) return
+    setLoadingFirestore(true)
+    try {
+      const data = await getChallenges(user.uid)
+      setFirestoreData(data)
+      // Sync enrolled IDs from Firestore
+      setEnrolled(data.filter(d => d.enrolled).map(d => d.challengeId))
+    } catch (err) {
+      console.error('Failed to load challenges:', err)
+    } finally {
+      setLoadingFirestore(false)
+    }
+  }, [user])
+
+  useEffect(() => {
+    if (user) {
+      loadFirestoreData()
+    } else {
+      // localStorage fallback
+      if (typeof window !== 'undefined') {
+        const e = localStorage.getItem('challenge_enrolled')
+        const c = localStorage.getItem('challenge_completions')
+        if (e) setEnrolled(JSON.parse(e))
+        if (c) setCompletions(JSON.parse(c))
+      }
+    }
+  }, [user, loadFirestoreData])
+
+  // ── localStorage helpers (used only when NOT logged in) ──────────────────────
+
+  function saveEnrolledLocal(next: number[]) {
     setEnrolled(next)
     if (typeof window !== 'undefined') localStorage.setItem('challenge_enrolled', JSON.stringify(next))
   }
 
-  function saveCompletions(next: Record<string, boolean>) {
+  function saveCompletionsLocal(next: Record<string, boolean>) {
     setCompletions(next)
     if (typeof window !== 'undefined') localStorage.setItem('challenge_completions', JSON.stringify(next))
   }
 
-  function enrollChallenge(id: number) {
-    if (!enrolled.includes(id)) saveEnrolled([...enrolled, id])
+  // ── Actions ──────────────────────────────────────────────────────────────────
+
+  async function handleEnrollChallenge(challenge: Challenge) {
+    if (enrolled.includes(challenge.id)) return
+
+    if (user) {
+      setActionLoading(challenge.id)
+      try {
+        await firestoreEnrollChallenge(user.uid, challenge.id, challenge.title)
+        await loadFirestoreData()
+      } catch (err) {
+        console.error('Failed to enroll challenge:', err)
+      } finally {
+        setActionLoading(null)
+      }
+    } else {
+      saveEnrolledLocal([...enrolled, challenge.id])
+    }
   }
 
-  function markToday(challengeId: number) {
-    const key = `${challengeId}_${getTodayKey()}`
-    const next = { ...completions, [key]: true }
-    saveCompletions(next)
-    setCelebrated(challengeId)
-    setTimeout(() => setCelebrated(null), 1500)
+  async function markToday(challengeId: number) {
+    if (user) {
+      setActionLoading(challengeId)
+      try {
+        const todayDate = getTodayDate()
+        await firestoreMarkChallengeDay(user.uid, challengeId, todayDate, true)
+        await loadFirestoreData()
+        setCelebrated(challengeId)
+        setTimeout(() => setCelebrated(null), 1500)
+      } catch (err) {
+        console.error('Failed to mark challenge day:', err)
+      } finally {
+        setActionLoading(null)
+      }
+    } else {
+      const key = `${challengeId}_${getTodayKey()}`
+      const next = { ...completions, [key]: true }
+      saveCompletionsLocal(next)
+      setCelebrated(challengeId)
+      setTimeout(() => setCelebrated(null), 1500)
+    }
+  }
+
+  // ── Derived helpers ───────────────────────────────────────────────────────────
+
+  // Get completions for a challenge — from Firestore data or localStorage
+  function getCompletionsForChallenge(challengeId: number): Record<string, boolean> {
+    if (user) {
+      const entry = firestoreData.find(d => d.challengeId === challengeId)
+      return entry?.completions || {}
+    }
+    // localStorage completions are stored with legacy key: `{id}_{yyyy-m-d}`
+    const result: Record<string, boolean> = {}
+    Object.keys(completions).forEach(k => {
+      if (k.startsWith(`${challengeId}_`)) {
+        result[k] = completions[k]
+      }
+    })
+    return result
   }
 
   function getStreakCount(challengeId: number): number {
     const today = new Date()
     let streak = 0
-    for (let i = 0; i < 30; i++) {
-      const d = new Date(today)
-      d.setDate(today.getDate() - i)
-      const key = `${challengeId}_${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
-      if (completions[key]) streak++
-      else if (i > 0) break
+
+    if (user) {
+      const entry = firestoreData.find(d => d.challengeId === challengeId)
+      const done = entry?.completions || {}
+      for (let i = 0; i < 30; i++) {
+        const d = new Date(today)
+        d.setDate(today.getDate() - i)
+        const yyyy = d.getFullYear()
+        const mm = String(d.getMonth() + 1).padStart(2, '0')
+        const dd = String(d.getDate()).padStart(2, '0')
+        const dateKey = `${yyyy}-${mm}-${dd}`
+        if (done[dateKey]) streak++
+        else if (i > 0) break
+      }
+    } else {
+      for (let i = 0; i < 30; i++) {
+        const d = new Date(today)
+        d.setDate(today.getDate() - i)
+        const key = `${challengeId}_${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
+        if (completions[key]) streak++
+        else if (i > 0) break
+      }
     }
     return streak
   }
@@ -101,6 +212,17 @@ export default function ChallengePage() {
     const year = today.getFullYear()
     const month = today.getMonth()
     const totalDays = getDaysInMonth(year, month)
+
+    if (user) {
+      const entry = firestoreData.find(d => d.challengeId === challengeId)
+      const done = entry?.completions || {}
+      return Array.from({ length: totalDays }, (_, i) => {
+        const mm = String(month + 1).padStart(2, '0')
+        const dd = String(i + 1).padStart(2, '0')
+        return !!done[`${year}-${mm}-${dd}`]
+      })
+    }
+
     return Array.from({ length: totalDays }, (_, i) => {
       const key = `${challengeId}_${year}-${month}-${i + 1}`
       return !!completions[key]
@@ -112,13 +234,29 @@ export default function ChallengePage() {
     const year = today.getFullYear()
     const month = today.getMonth()
     let done = 0
-    for (let i = 1; i <= totalDays; i++) {
-      if (completions[`${challengeId}_${year}-${month}-${i}`]) done++
+
+    if (user) {
+      const entry = firestoreData.find(d => d.challengeId === challengeId)
+      const c = entry?.completions || {}
+      for (let i = 1; i <= totalDays; i++) {
+        const mm = String(month + 1).padStart(2, '0')
+        const dd = String(i).padStart(2, '0')
+        if (c[`${year}-${mm}-${dd}`]) done++
+      }
+    } else {
+      for (let i = 1; i <= totalDays; i++) {
+        if (completions[`${challengeId}_${year}-${month}-${i}`]) done++
+      }
     }
     return Math.round((done / totalDays) * 100)
   }
 
   function isDoneToday(challengeId: number): boolean {
+    if (user) {
+      const entry = firestoreData.find(d => d.challengeId === challengeId)
+      const done = entry?.completions || {}
+      return !!done[getTodayDate()]
+    }
     return !!completions[`${challengeId}_${getTodayKey()}`]
   }
 
@@ -173,6 +311,7 @@ export default function ChallengePage() {
               {challenges.map((c) => {
                 const isEnrolled = enrolled.includes(c.id)
                 const progress = isEnrolled ? getProgress(c.id, c.days) : 0
+                const isLoading = actionLoading === c.id
                 return (
                   <motion.div key={c.id} whileHover={{ y: -4 }} transition={{ type: 'spring', stiffness: 300 }}>
                     <Card className="overflow-hidden h-full flex flex-col">
@@ -207,8 +346,13 @@ export default function ChallengePage() {
                             <Progress value={progress} />
                           </div>
                         ) : (
-                          <Button size="sm" className="w-full" onClick={() => enrollChallenge(c.id)}>
-                            Ikut Challenge
+                          <Button
+                            size="sm"
+                            className="w-full"
+                            disabled={isLoading || loadingFirestore}
+                            onClick={() => handleEnrollChallenge(c)}
+                          >
+                            {isLoading ? 'Mendaftar...' : 'Ikut Challenge'}
                           </Button>
                         )}
                       </CardContent>
@@ -222,7 +366,13 @@ export default function ChallengePage() {
           {/* My Challenges */}
           <TabsContent value="mine">
             <div className="mt-4 space-y-6">
-              {enrolled.length === 0 ? (
+              {loadingFirestore ? (
+                <Card>
+                  <CardContent className="p-10 text-center">
+                    <p className="text-muted-foreground text-sm">Memuat challenge...</p>
+                  </CardContent>
+                </Card>
+              ) : enrolled.length === 0 ? (
                 <Card>
                   <CardContent className="p-10 text-center">
                     <div className="text-5xl mb-4">🎯</div>
@@ -238,6 +388,7 @@ export default function ChallengePage() {
                   const progress = getProgress(id, c.days)
                   const doneToday = isDoneToday(id)
                   const today = new Date()
+                  const isLoading = actionLoading === id
 
                   return (
                     <Card key={id} className="overflow-hidden">
@@ -312,9 +463,10 @@ export default function ChallengePage() {
                             <Button
                               size="sm"
                               className="w-full bg-emerald-600 hover:bg-emerald-700"
+                              disabled={isLoading}
                               onClick={() => markToday(id)}
                             >
-                              Tandai Hari Ini ✓
+                              {isLoading ? 'Menyimpan...' : 'Tandai Hari Ini ✓'}
                             </Button>
                           </motion.div>
                         )}
@@ -336,27 +488,27 @@ export default function ChallengePage() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="pt-0 space-y-3">
-                  {leaderboard.map((user) => (
+                  {leaderboard.map((lbUser) => (
                     <motion.div
-                      key={user.rank}
+                      key={lbUser.rank}
                       whileHover={{ x: 4 }}
                       className="flex items-center gap-4 p-3 rounded-xl bg-muted/40 hover:bg-muted/70 transition-colors"
                     >
                       <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm
-                        ${user.rank === 1 ? 'bg-amber-400 text-white' : user.rank === 2 ? 'bg-slate-300 text-slate-700' : user.rank === 3 ? 'bg-orange-300 text-white' : 'bg-muted text-muted-foreground'}`}>
-                        {user.rank === 1 ? '👑' : user.rank}
+                        ${lbUser.rank === 1 ? 'bg-amber-400 text-white' : lbUser.rank === 2 ? 'bg-slate-300 text-slate-700' : lbUser.rank === 3 ? 'bg-orange-300 text-white' : 'bg-muted text-muted-foreground'}`}>
+                        {lbUser.rank === 1 ? '👑' : lbUser.rank}
                       </div>
                       <div className="w-9 h-9 rounded-full bg-gradient-to-br from-teal-500 to-emerald-600 flex items-center justify-center text-white text-xs font-bold shrink-0">
-                        {user.initials}
+                        {lbUser.initials}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-foreground">{user.name}</p>
+                        <p className="text-sm font-semibold text-foreground">{lbUser.name}</p>
                         <p className="text-xs text-muted-foreground flex items-center gap-1">
-                          <Flame className="w-3 h-3 text-orange-500" /> {user.streak} hari streak
+                          <Flame className="w-3 h-3 text-orange-500" /> {lbUser.streak} hari streak
                         </p>
                       </div>
                       <div className="text-right">
-                        <p className="text-sm font-bold text-foreground">{user.points.toLocaleString()}</p>
+                        <p className="text-sm font-bold text-foreground">{lbUser.points.toLocaleString()}</p>
                         <p className="text-xs text-muted-foreground">poin</p>
                       </div>
                     </motion.div>

@@ -125,6 +125,7 @@ export default function CommunityPage() {
         userPhoto: profile?.photoURL || user.photoURL || '',
         content: newPostContent.trim(),
         tags: selectedTags,
+        createdAt: null,
       })
       await loadPosts()
       setNewPostContent('')

@@ -6,6 +6,8 @@ import { Heart, BookOpen, Sparkles, Save, ChevronDown } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Separator } from '@/components/ui/separator'
+import { useAuth } from '@/lib/auth-context'
+import { saveMoodEntry, getMoodHistory } from '@/lib/db'
 
 type MoodKey = 'mantap' | 'baik' | 'biasa' | 'kurang' | 'berjuang'
 
@@ -46,14 +48,26 @@ function getTodayKey() {
   return `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`
 }
 
-function getLast7Days(): { key: string; label: string }[] {
+function getTodayDate() {
+  const d = new Date()
+  const yyyy = d.getFullYear()
+  const mm = String(d.getMonth() + 1).padStart(2, '0')
+  const dd = String(d.getDate()).padStart(2, '0')
+  return `${yyyy}-${mm}-${dd}`
+}
+
+function getLast7Days(): { key: string; label: string; isoDate: string }[] {
   const result = []
   for (let i = 6; i >= 0; i--) {
     const d = new Date()
     d.setDate(d.getDate() - i)
+    const yyyy = d.getFullYear()
+    const mm = String(d.getMonth() + 1).padStart(2, '0')
+    const dd = String(d.getDate()).padStart(2, '0')
     result.push({
       key: `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`,
       label: dayLabels[d.getDay()],
+      isoDate: `${yyyy}-${mm}-${dd}`,
     })
   }
   return result
@@ -77,42 +91,105 @@ function getDailyQuotes(count: number): typeof quotes {
 }
 
 export default function MoodPage() {
+  const { user } = useAuth()
   const [selectedMood, setSelectedMood] = useState<MoodKey | null>(null)
   const [moodNote, setMoodNote] = useState('')
   const [saved, setSaved] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  // moodHistory: keyed by the legacy key (yyyy-m-d) for bar chart lookup
   const [moodHistory, setMoodHistory] = useState<Record<string, number>>({})
   const [muhasabah, setMuhasabah] = useState({ q1: '', q2: '', q3: '' })
   const [muhasabahSaved, setMuhasabahSaved] = useState(false)
+  const [historyLoading, setHistoryLoading] = useState(false)
 
   const dailyQuotes = getDailyQuotes(3)
   const last7Days = getLast7Days()
 
+  // Load mood history from Firestore (logged in) or localStorage (fallback)
+  useEffect(() => {
+    if (user) {
+      setHistoryLoading(true)
+      getMoodHistory(user.uid, 7)
+        .then((entries) => {
+          const history: Record<string, number> = {}
+          entries.forEach((entry) => {
+            // Convert ISO date (yyyy-mm-dd) to legacy key (yyyy-m-d) for bar chart
+            const parts = entry.date.split('-')
+            if (parts.length === 3) {
+              const legacyKey = `${parseInt(parts[0])}-${parseInt(parts[1]) - 1}-${parseInt(parts[2])}`
+              history[legacyKey] = entry.score
+            }
+          })
+          setMoodHistory(history)
+        })
+        .catch((err) => {
+          console.error('Failed to load mood history:', err)
+        })
+        .finally(() => setHistoryLoading(false))
+    } else {
+      // localStorage fallback for non-logged-in users
+      if (typeof window !== 'undefined') {
+        const h = localStorage.getItem('mood_history')
+        const m = localStorage.getItem('mood_muhasabah')
+        const todaySaved = localStorage.getItem('mood_today_saved')
+        if (h) setMoodHistory(JSON.parse(h))
+        if (m) setMuhasabah(JSON.parse(m))
+        if (todaySaved) {
+          const { mood, note } = JSON.parse(todaySaved)
+          setSelectedMood(mood)
+          setMoodNote(note)
+          setSaved(true)
+        }
+      }
+    }
+  }, [user])
+
+  // Load muhasabah from localStorage always (no Firestore collection for it)
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const h = localStorage.getItem('mood_history')
       const m = localStorage.getItem('mood_muhasabah')
-      const todaySaved = localStorage.getItem('mood_today_saved')
-      if (h) setMoodHistory(JSON.parse(h))
       if (m) setMuhasabah(JSON.parse(m))
-      if (todaySaved) {
-        const { mood, note } = JSON.parse(todaySaved)
-        setSelectedMood(mood)
-        setMoodNote(note)
-        setSaved(true)
-      }
     }
   }, [])
 
-  function saveMood() {
+  async function saveMood() {
     if (!selectedMood) return
     const option = moodOptions.find(o => o.key === selectedMood)!
-    const next = { ...moodHistory, [getTodayKey()]: option.score }
-    setMoodHistory(next)
-    setSaved(true)
-    if (typeof window !== 'undefined') {
-      localStorage.setItem('mood_history', JSON.stringify(next))
-      localStorage.setItem('mood_today_saved', JSON.stringify({ mood: selectedMood, note: moodNote }))
+    setSaving(true)
+    setSaveError(null)
+
+    if (user) {
+      try {
+        const today = getTodayDate()
+        await saveMoodEntry(user.uid, {
+          date: today,
+          score: option.score,
+          label: option.label,
+          note: moodNote,
+          createdAt: null,
+        })
+        // Update local bar chart state using legacy key
+        const legacyKey = getTodayKey()
+        setMoodHistory(prev => ({ ...prev, [legacyKey]: option.score }))
+        setSaved(true)
+      } catch (err) {
+        console.error('Failed to save mood entry:', err)
+        setSaveError('Gagal menyimpan. Coba lagi.')
+      }
+    } else {
+      // localStorage fallback
+      const legacyKey = getTodayKey()
+      const next = { ...moodHistory, [legacyKey]: option.score }
+      setMoodHistory(next)
+      setSaved(true)
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('mood_history', JSON.stringify(next))
+        localStorage.setItem('mood_today_saved', JSON.stringify({ mood: selectedMood, note: moodNote }))
+      }
     }
+
+    setSaving(false)
   }
 
   function saveMuhasabah() {
@@ -150,6 +227,15 @@ export default function MoodPage() {
         </div>
       </motion.div>
 
+      {/* Login notice */}
+      {!user && (
+        <motion.div variants={itemVariants}>
+          <div className="rounded-2xl bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 px-4 py-3 text-sm text-amber-700 dark:text-amber-400">
+            Login untuk menyimpan riwayat mood
+          </div>
+        </motion.div>
+      )}
+
       {/* Daily Check-in */}
       <motion.div variants={itemVariants}>
         <Card className="border-pink-100 dark:border-pink-900/30">
@@ -164,7 +250,7 @@ export default function MoodPage() {
                   whileHover={{ scale: 1.08 }}
                   whileTap={{ scale: 0.95 }}
                   animate={selectedMood === option.key ? { scale: 1.12 } : { scale: 1 }}
-                  onClick={() => { setSelectedMood(option.key); setSaved(false) }}
+                  onClick={() => { setSelectedMood(option.key); setSaved(false); setSaveError(null) }}
                   className={`flex flex-col items-center gap-1.5 p-3 rounded-2xl border-2 transition-all min-w-[80px]
                     ${selectedMood === option.key
                       ? `${option.color} shadow-md ring-2 ring-offset-1 ring-pink-300`
@@ -206,8 +292,8 @@ export default function MoodPage() {
                 />
                 <div className="mt-3 flex items-center gap-3">
                   {!saved ? (
-                    <Button onClick={saveMood} className="bg-pink-600 hover:bg-pink-700">
-                      <Save className="w-4 h-4 mr-1" /> Simpan Check-in
+                    <Button onClick={saveMood} disabled={saving} className="bg-pink-600 hover:bg-pink-700">
+                      <Save className="w-4 h-4 mr-1" /> {saving ? 'Menyimpan...' : 'Simpan Check-in'}
                     </Button>
                   ) : (
                     <motion.div
@@ -215,8 +301,11 @@ export default function MoodPage() {
                       animate={{ scale: 1, opacity: 1 }}
                       className="flex items-center gap-2 text-emerald-600 font-semibold text-sm"
                     >
-                      ✅ Check-in tersimpan! JazakAllahu khairan.
+                      {user ? '✅ Check-in tersimpan! 💚' : '✅ Check-in tersimpan! JazakAllahu khairan.'}
                     </motion.div>
+                  )}
+                  {saveError && (
+                    <span className="text-sm text-red-500">{saveError}</span>
                   )}
                 </div>
               </motion.div>
@@ -229,7 +318,10 @@ export default function MoodPage() {
       <motion.div variants={itemVariants}>
         <Card>
           <CardHeader className="pb-3">
-            <CardTitle className="text-lg">Grafik Spiritual 7 Hari Terakhir</CardTitle>
+            <CardTitle className="text-lg">
+              Grafik Spiritual 7 Hari Terakhir
+              {historyLoading && <span className="text-sm font-normal text-muted-foreground ml-2">Memuat...</span>}
+            </CardTitle>
           </CardHeader>
           <CardContent className="pt-0">
             <div className="flex items-end gap-3 h-32">

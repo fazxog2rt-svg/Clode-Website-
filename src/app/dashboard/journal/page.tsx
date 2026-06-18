@@ -1,12 +1,14 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { PenLine, Plus, Lock, Smile, Meh, Frown, Heart, Star, ChevronDown } from 'lucide-react'
+import { PenLine, Plus, Lock, Heart, Star, Trash2 } from 'lucide-react'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { useAuth } from '@/lib/auth-context'
+import { saveJournalEntry, getJournalEntries, deleteJournalEntry, JournalEntry } from '@/lib/db'
 
 const moods = [
   { icon: '😊', label: 'Senang', color: 'text-yellow-500', bg: 'bg-yellow-50 dark:bg-yellow-950/20', border: 'border-yellow-200 dark:border-yellow-800' },
@@ -17,45 +19,97 @@ const moods = [
   { icon: '🌸', label: 'Damai', color: 'text-pink-500', bg: 'bg-pink-50 dark:bg-pink-950/20', border: 'border-pink-200 dark:border-pink-800' },
 ]
 
-const journalEntries = [
-  {
-    id: 1,
-    date: 'Selasa, 17 Juni 2025',
-    mood: '🤲',
-    moodLabel: 'Bersyukur',
-    title: 'Hari yang Penuh Berkah',
-    preview: 'Alhamdulillah hari ini terasa ringan. Berhasil bangun untuk shalat Tahajjud dan dzikir pagi...',
-    gratitude: ['Kesehatan yang diberikan Allah', 'Keluarga yang sayang', 'Rezeki yang cukup'],
-    evaluation: 4,
-  },
-  {
-    id: 2,
-    date: 'Senin, 16 Juni 2025',
-    mood: '😌',
-    moodLabel: 'Tenang',
-    title: 'Refleksi Perjalanan Hijrah',
-    preview: 'Hari ini saya menghabiskan waktu untuk muhasabah diri. Banyak hal yang perlu diperbaiki...',
-    gratitude: ['Dapat belajar ilmu baru', 'Sahabat yang mendukung'],
-    evaluation: 3,
-  },
-  {
-    id: 3,
-    date: 'Ahad, 15 Juni 2025',
-    mood: '😊',
-    moodLabel: 'Senang',
-    title: 'Pencapaian Kecil yang Berarti',
-    preview: 'Alhamdulillah berhasil khatam membaca satu juz hari ini. Rasanya ada kepuasan tersendiri...',
-    gratitude: ['Bisa tilawah 1 juz', 'Cuaca yang bagus', 'Masakan ibu yang enak'],
-    evaluation: 5,
-  },
-]
+function getTodayDate(): string {
+  return new Date().toISOString().split('T')[0]
+}
+
+function formatDateDisplay(dateStr: string): string {
+  try {
+    return new Date(dateStr + 'T00:00:00').toLocaleDateString('id-ID', {
+      weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
+    })
+  } catch {
+    return dateStr
+  }
+}
+
+function getMoodIcon(moodLabel: string): string {
+  return moods.find((m) => m.label === moodLabel)?.icon ?? '😊'
+}
 
 export default function JournalPage() {
+  const { user } = useAuth()
   const [showNewEntry, setShowNewEntry] = useState(false)
   const [selectedMood, setSelectedMood] = useState<string | null>(null)
   const [journalText, setJournalText] = useState('')
   const [gratitude, setGratitude] = useState(['', '', ''])
   const [evaluation, setEvaluation] = useState(0)
+
+  // Firestore entries state
+  const [entries, setEntries] = useState<JournalEntry[]>([])
+  const [loadingEntries, setLoadingEntries] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [saveSuccess, setSaveSuccess] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+
+  const todayDate = getTodayDate()
+
+  // Load entries from Firestore on mount / when user changes
+  useEffect(() => {
+    if (!user) {
+      setEntries([])
+      return
+    }
+    setLoadingEntries(true)
+    getJournalEntries(user.uid, 20)
+      .then((data) => setEntries(data))
+      .catch((err) => console.error('Failed to load journal entries:', err))
+      .finally(() => setLoadingEntries(false))
+  }, [user])
+
+  const handleSave = async () => {
+    if (!user) return
+    if (!journalText.trim() && !selectedMood) return
+
+    setSaving(true)
+    setSaveError(null)
+    try {
+      await saveJournalEntry(user.uid, {
+        date: todayDate,
+        content: journalText,
+        mood: selectedMood ?? '',
+        gratitude: gratitude.filter(Boolean),
+        evaluation,
+        createdAt: null,
+      })
+      // Refresh entries list
+      const updated = await getJournalEntries(user.uid, 20)
+      setEntries(updated)
+      // Clear form
+      setJournalText('')
+      setSelectedMood(null)
+      setGratitude(['', '', ''])
+      setEvaluation(0)
+      setShowNewEntry(false)
+      setSaveSuccess(true)
+      setTimeout(() => setSaveSuccess(false), 3000)
+    } catch (err) {
+      console.error('Failed to save journal entry:', err)
+      setSaveError('Gagal menyimpan jurnal. Coba lagi.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleDelete = async (entryId: string) => {
+    if (!user || !entryId) return
+    try {
+      await deleteJournalEntry(user.uid, entryId)
+      setEntries((prev) => prev.filter((e) => e.id !== entryId))
+    } catch (err) {
+      console.error('Failed to delete journal entry:', err)
+    }
+  }
 
   return (
     <div className="space-y-6 max-w-4xl">
@@ -67,10 +121,35 @@ export default function JournalPage() {
             <span>Jurnal pribadi yang aman & privat — hanya kamu yang bisa membaca</span>
           </div>
         </div>
-        <Button onClick={() => setShowNewEntry(!showNewEntry)} className="gap-2">
-          <Plus className="w-4 h-4" /> Tulis Jurnal Hari Ini
-        </Button>
+        <div className="flex items-center gap-3">
+          {saveSuccess && (
+            <motion.span
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="text-xs text-teal-600 font-medium bg-teal-50 dark:bg-teal-950/20 border border-teal-200 dark:border-teal-800 rounded-full px-3 py-1.5"
+            >
+              Jurnal tersimpan ✓
+            </motion.span>
+          )}
+          <Button onClick={() => setShowNewEntry(!showNewEntry)} className="gap-2">
+            <Plus className="w-4 h-4" /> Tulis Jurnal Hari Ini
+          </Button>
+        </div>
       </motion.div>
+
+      {/* Guest notice */}
+      {!user && (
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+          <Card className="border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/10">
+            <CardContent className="p-4 flex items-center gap-3">
+              <span className="text-2xl">☁️</span>
+              <p className="text-sm text-amber-800 dark:text-amber-300">
+                Login untuk menyimpan jurnal ke cloud dan mengaksesnya dari mana saja.
+              </p>
+            </CardContent>
+          </Card>
+        </motion.div>
+      )}
 
       {/* New Entry Form */}
       <AnimatePresence>
@@ -85,7 +164,9 @@ export default function JournalPage() {
               <CardContent className="p-6 space-y-5">
                 <div className="flex items-center gap-2">
                   <PenLine className="w-5 h-5 text-teal-600" />
-                  <h3 className="font-bold text-foreground">Jurnal Baru — Selasa, 17 Juni 2025</h3>
+                  <h3 className="font-bold text-foreground">
+                    Jurnal Baru — {formatDateDisplay(todayDate)}
+                  </h3>
                 </div>
 
                 {/* Mood */}
@@ -159,8 +240,20 @@ export default function JournalPage() {
                   </div>
                 </div>
 
+                {saveError && (
+                  <p className="text-sm text-red-500">{saveError}</p>
+                )}
+
                 <div className="flex gap-3">
-                  <Button className="flex-1">Simpan Jurnal</Button>
+                  {user ? (
+                    <Button className="flex-1" onClick={handleSave} disabled={saving}>
+                      {saving ? 'Menyimpan...' : 'Simpan Jurnal'}
+                    </Button>
+                  ) : (
+                    <Button className="flex-1" disabled>
+                      Login untuk Menyimpan
+                    </Button>
+                  )}
                   <Button variant="outline" onClick={() => setShowNewEntry(false)}>Batal</Button>
                 </div>
               </CardContent>
@@ -177,65 +270,144 @@ export default function JournalPage() {
         </TabsList>
 
         <TabsContent value="entries" className="mt-6 space-y-4">
-          {journalEntries.map((entry, index) => (
-            <motion.div key={entry.id} initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.08 }}>
-              <Card className="card-hover cursor-pointer">
-                <CardContent className="p-5">
-                  <div className="flex items-start justify-between gap-4 mb-3">
-                    <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-muted flex items-center justify-center text-xl">{entry.mood}</div>
-                      <div>
-                        <p className="text-xs text-muted-foreground">{entry.date}</p>
-                        <Badge variant="emerald" className="text-xs mt-0.5">{entry.moodLabel}</Badge>
-                      </div>
-                    </div>
-                    <div className="flex gap-0.5">
-                      {[...Array(5)].map((_, i) => (
-                        <Star key={i} className={`w-3.5 h-3.5 ${i < entry.evaluation ? 'fill-amber-400 text-amber-400' : 'text-muted-foreground/30'}`} />
-                      ))}
-                    </div>
-                  </div>
-                  <h3 className="font-bold text-foreground mb-2">{entry.title}</h3>
-                  <p className="text-sm text-muted-foreground mb-3 line-clamp-2">{entry.preview}</p>
-                  <div className="flex gap-1.5 flex-wrap">
-                    {entry.gratitude.map((g, i) => (
-                      <span key={i} className="flex items-center gap-1 text-xs text-teal-600 bg-teal-50 dark:bg-teal-950/20 rounded-full px-2.5 py-0.5">
-                        <Heart className="w-2.5 h-2.5 fill-teal-500" /> {g}
-                      </span>
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            </motion.div>
-          ))}
+          {/* Firestore entries */}
+          {user && (
+            <>
+              {loadingEntries ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="animate-spin w-8 h-8 border-2 border-teal-500 border-t-transparent rounded-full" />
+                </div>
+              ) : entries.length === 0 ? (
+                <div className="text-center py-12">
+                  <div className="text-4xl mb-3">📓</div>
+                  <h3 className="font-bold text-foreground mb-2">Belum Ada Jurnal</h3>
+                  <p className="text-muted-foreground text-sm">Mulai tulis jurnal pertamamu hari ini!</p>
+                </div>
+              ) : (
+                entries.map((entry, index) => {
+                  const moodIcon = getMoodIcon(entry.mood)
+                  const dateDisplay = formatDateDisplay(entry.date)
+                  return (
+                    <motion.div key={entry.id} initial={{ opacity: 0, y: 15 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: index * 0.08 }}>
+                      <Card className="card-hover">
+                        <CardContent className="p-5">
+                          <div className="flex items-start justify-between gap-4 mb-3">
+                            <div className="flex items-center gap-3">
+                              <div className="w-10 h-10 rounded-xl bg-muted flex items-center justify-center text-xl">{moodIcon}</div>
+                              <div>
+                                <p className="text-xs text-muted-foreground">{dateDisplay}</p>
+                                {entry.mood && <Badge variant="emerald" className="text-xs mt-0.5">{entry.mood}</Badge>}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <div className="flex gap-0.5">
+                                {[...Array(5)].map((_, i) => (
+                                  <Star key={i} className={`w-3.5 h-3.5 ${i < entry.evaluation ? 'fill-amber-400 text-amber-400' : 'text-muted-foreground/30'}`} />
+                                ))}
+                              </div>
+                              <button
+                                onClick={() => entry.id && handleDelete(entry.id)}
+                                className="w-7 h-7 flex items-center justify-center rounded-lg text-muted-foreground hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 transition-colors"
+                                title="Hapus entri"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                          {entry.content && (
+                            <p className="text-sm text-muted-foreground mb-3 line-clamp-2">{entry.content}</p>
+                          )}
+                          {entry.gratitude && entry.gratitude.length > 0 && (
+                            <div className="flex gap-1.5 flex-wrap">
+                              {entry.gratitude.map((g, i) => (
+                                <span key={i} className="flex items-center gap-1 text-xs text-teal-600 bg-teal-50 dark:bg-teal-950/20 rounded-full px-2.5 py-0.5">
+                                  <Heart className="w-2.5 h-2.5 fill-teal-500" /> {g}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                        </CardContent>
+                      </Card>
+                    </motion.div>
+                  )
+                })
+              )}
+            </>
+          )}
+
+          {/* Guest state */}
+          {!user && (
+            <div className="text-center py-12">
+              <div className="text-4xl mb-3">🔐</div>
+              <h3 className="font-bold text-foreground mb-2">Login Diperlukan</h3>
+              <p className="text-muted-foreground text-sm">Login untuk melihat dan menyimpan jurnal ke cloud.</p>
+            </div>
+          )}
         </TabsContent>
 
         <TabsContent value="mood" className="mt-6">
           <Card>
             <CardHeader><CardTitle>Mood 7 Hari Terakhir</CardTitle></CardHeader>
             <CardContent>
-              <div className="flex gap-3">
-                {[
-                  { day: 'Sen', mood: '😊' }, { day: 'Sel', mood: '🤲' }, { day: 'Rab', mood: '😌' },
-                  { day: 'Kam', mood: '😔' }, { day: 'Jum', mood: '🌸' }, { day: 'Sab', mood: '😊' }, { day: 'Ahd', mood: '🤲' },
-                ].map(({ day, mood }) => (
-                  <div key={day} className="flex-1 flex flex-col items-center gap-1.5 p-3 bg-muted rounded-2xl">
-                    <span className="text-xs text-muted-foreground">{day}</span>
-                    <span className="text-2xl">{mood}</span>
-                  </div>
-                ))}
-              </div>
+              {entries.length > 0 ? (
+                <div className="flex gap-3">
+                  {entries.slice(0, 7).reverse().map((entry) => (
+                    <div key={entry.id} className="flex-1 flex flex-col items-center gap-1.5 p-3 bg-muted rounded-2xl">
+                      <span className="text-xs text-muted-foreground">
+                        {new Date(entry.date + 'T00:00:00').toLocaleDateString('id-ID', { weekday: 'short' })}
+                      </span>
+                      <span className="text-2xl">{getMoodIcon(entry.mood)}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex gap-3">
+                  {[
+                    { day: 'Sen', mood: '😊' }, { day: 'Sel', mood: '🤲' }, { day: 'Rab', mood: '😌' },
+                    { day: 'Kam', mood: '😔' }, { day: 'Jum', mood: '🌸' }, { day: 'Sab', mood: '😊' }, { day: 'Ahd', mood: '🤲' },
+                  ].map(({ day, mood }) => (
+                    <div key={day} className="flex-1 flex flex-col items-center gap-1.5 p-3 bg-muted rounded-2xl">
+                      <span className="text-xs text-muted-foreground">{day}</span>
+                      <span className="text-2xl">{mood}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
 
         <TabsContent value="gratitude" className="mt-6">
-          <div className="text-center py-12">
-            <div className="text-4xl mb-3">🌟</div>
-            <h3 className="font-bold text-foreground mb-2">Jurnal Syukur</h3>
-            <p className="text-muted-foreground text-sm mb-4">Kumpulan hal-hal yang kamu syukuri setiap hari</p>
-            <p className="text-xs text-muted-foreground">Mulai tulis jurnal untuk melihat koleksi syukur kamu</p>
-          </div>
+          {entries.some((e) => e.gratitude && e.gratitude.length > 0) ? (
+            <div className="space-y-4">
+              <CardHeader className="px-0 pt-0">
+                <CardTitle>Koleksi Syukur Kamu</CardTitle>
+              </CardHeader>
+              {entries
+                .filter((e) => e.gratitude && e.gratitude.length > 0)
+                .map((entry) => (
+                  <Card key={entry.id}>
+                    <CardContent className="p-4">
+                      <p className="text-xs text-muted-foreground mb-2">{formatDateDisplay(entry.date)}</p>
+                      <div className="flex gap-1.5 flex-wrap">
+                        {entry.gratitude.map((g, i) => (
+                          <span key={i} className="flex items-center gap-1 text-xs text-teal-600 bg-teal-50 dark:bg-teal-950/20 rounded-full px-2.5 py-0.5">
+                            <Heart className="w-2.5 h-2.5 fill-teal-500" /> {g}
+                          </span>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+            </div>
+          ) : (
+            <div className="text-center py-12">
+              <div className="text-4xl mb-3">🌟</div>
+              <h3 className="font-bold text-foreground mb-2">Jurnal Syukur</h3>
+              <p className="text-muted-foreground text-sm mb-4">Kumpulan hal-hal yang kamu syukuri setiap hari</p>
+              <p className="text-xs text-muted-foreground">Mulai tulis jurnal untuk melihat koleksi syukur kamu</p>
+            </div>
+          )}
         </TabsContent>
       </Tabs>
     </div>
