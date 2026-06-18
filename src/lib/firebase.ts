@@ -10,21 +10,17 @@ const firebaseConfig = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || '',
 }
 
-const isConfigured = !!firebaseConfig.apiKey
+export const isFirebaseConfigured = !!firebaseConfig.apiKey
 
 let app: FirebaseApp | undefined
-let auth: Auth
-let googleProvider: GoogleAuthProvider
+let _auth: Auth | null = null
 
-if (isConfigured) {
+if (isFirebaseConfigured) {
   app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0]
-  auth = getAuth(app)
-  googleProvider = new GoogleAuthProvider()
-  googleProvider.setCustomParameters({ prompt: 'select_account' })
-} else {
-  // Provide stub values so imports resolve without initializing Firebase
-  auth = {} as Auth
-  googleProvider = new GoogleAuthProvider()
+  _auth = getAuth(app)
 }
 
-export { auth, googleProvider }
+export const googleProvider = new GoogleAuthProvider()
+googleProvider.setCustomParameters({ prompt: 'select_account' })
+
+export { _auth as auth }
