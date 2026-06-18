@@ -9,7 +9,8 @@ import {
   LayoutDashboard, TrendingUp, BookOpen, Users, Sun,
   BookMarked, PenLine, Calendar, ShoppingBag, UserCheck,
   Sparkles, Settings, ChevronLeft, ChevronRight, Bell, LogOut,
-  Clock, Calculator, BookText, Moon, Swords, Heart, Radio, MessageCircleQuestion
+  Clock, Calculator, BookText, Moon, Swords, Heart, Radio, MessageCircleQuestion,
+  Map, BookOpenCheck, Video, Store, Network
 } from 'lucide-react'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
@@ -33,6 +34,11 @@ const navItems = [
   { href: '/dashboard/events', icon: Calendar, label: 'Kajian & Event', badge: '3' },
   { href: '/dashboard/marketplace', icon: ShoppingBag, label: 'Marketplace', badge: null },
   { href: '/dashboard/sahabat', icon: UserCheck, label: 'Sahabat Hijrah', badge: null },
+  { href: '/dashboard/roadmap', icon: Map, label: 'Hijrah Roadmap', badge: 'Baru' },
+  { href: '/dashboard/quiz', icon: BookOpenCheck, label: 'Islamic Quiz', badge: 'Baru' },
+  { href: '/dashboard/kajian', icon: Video, label: 'Live Kajian', badge: 'Live' },
+  { href: '/dashboard/marketplace', icon: Store, label: 'Marketplace', badge: null },
+  { href: '/dashboard/knowledge', icon: Network, label: 'Knowledge Graph', badge: 'Baru' },
   { href: '/dashboard/ai', icon: Sparkles, label: 'AI Companion', badge: 'AI' },
 ]
 

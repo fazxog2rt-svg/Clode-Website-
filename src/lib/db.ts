@@ -224,3 +224,98 @@ export async function getChallenges(uid: string): Promise<ChallengeProgress[]> {
   const snap = await getDocs(collection(db, 'users', uid, 'challenges'))
   return snap.docs.map(d => d.data() as ChallengeProgress)
 }
+
+// ─── Quiz (SM-2 Spaced Repetition) ───────────────────────────────────────────
+
+export interface QuizCardState {
+  questionId: string
+  easeFactor: number
+  interval: number
+  repetitions: number
+  nextReview: string // ISO date string
+}
+
+// ─── Kajian Q&A ───────────────────────────────────────────────────────────────
+
+export interface KajianQuestion {
+  id: string
+  sessionId: string
+  userId: string
+  userName: string
+  text: string
+  upvotes: number
+  upvotedBy: string[]
+  timestamp: string
+}
+
+// ─── Marketplace ──────────────────────────────────────────────────────────────
+
+export interface MarketProduct {
+  id: string
+  name: string
+  seller: string
+  price: number
+  category: string
+  rating: number
+  reviews: number
+  stock: number
+  description: string
+  tags: string[]
+}
+
+export interface MarketOrder {
+  id: string
+  userId: string
+  productId: string
+  productName: string
+  qty: number
+  total: number
+  status: 'pending' | 'paid' | 'shipped' | 'delivered' | 'completed'
+  escrowHeld: boolean
+  createdAt: string
+}
+
+// ─── Kajian Firestore Functions ───────────────────────────────────────────────
+
+export async function submitKajianQuestion(
+  sessionId: string,
+  question: Omit<KajianQuestion, 'id'>
+) {
+  const ref = collection(db, 'kajian', sessionId, 'questions')
+  return addDoc(ref, {
+    ...question,
+    upvotes: 0,
+    upvotedBy: [],
+    timestamp: new Date().toISOString(),
+  })
+}
+
+export async function getKajianQuestions(sessionId: string): Promise<KajianQuestion[]> {
+  const q = query(
+    collection(db, 'kajian', sessionId, 'questions'),
+    orderBy('upvotes', 'desc'),
+    limit(50)
+  )
+  const snap = await getDocs(q)
+  return snap.docs.map(d => ({ id: d.id, ...d.data() } as KajianQuestion))
+}
+
+export async function upvoteKajianQuestion(
+  sessionId: string,
+  questionId: string,
+  uid: string,
+  alreadyVoted: boolean
+) {
+  const ref = doc(db, 'kajian', sessionId, 'questions', questionId)
+  if (alreadyVoted) {
+    await updateDoc(ref, {
+      upvotes: increment(-1),
+      upvotedBy: arrayRemove(uid),
+    })
+  } else {
+    await updateDoc(ref, {
+      upvotes: increment(1),
+      upvotedBy: arrayUnion(uid),
+    })
+  }
+}
