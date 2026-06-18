@@ -8,7 +8,7 @@ interface AuthContextType {
   user: User | null
   profile: UserProfile | null
   loading: boolean
-  signInWithGoogle: () => Promise<void>
+  signInWithGoogle: () => Promise<boolean>
   signOut: () => Promise<void>
   refreshProfile: () => Promise<void>
 }
@@ -17,7 +17,7 @@ const AuthContext = createContext<AuthContextType>({
   user: null,
   profile: null,
   loading: false,
-  signInWithGoogle: async () => {},
+  signInWithGoogle: async () => false,
   signOut: async () => {},
   refreshProfile: async () => {},
 })
@@ -28,13 +28,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(isFirebaseConfigured)
 
   const loadProfile = async (firebaseUser: User) => {
-    await createOrUpdateUser(firebaseUser.uid, {
-      name: firebaseUser.displayName || '',
-      email: firebaseUser.email || '',
-      photoURL: firebaseUser.photoURL || '',
-    })
-    const p = await getUserProfile(firebaseUser.uid)
-    setProfile(p)
+    try {
+      await createOrUpdateUser(firebaseUser.uid, {
+        name: firebaseUser.displayName || '',
+        email: firebaseUser.email || '',
+        photoURL: firebaseUser.photoURL || '',
+      })
+      const p = await getUserProfile(firebaseUser.uid)
+      setProfile(p)
+    } catch {
+      // Firestore not set up yet — use Firebase Auth data directly
+      setProfile({
+        uid: firebaseUser.uid,
+        name: firebaseUser.displayName || '',
+        email: firebaseUser.email || '',
+        photoURL: firebaseUser.photoURL || '',
+        level: 'Muslimah Journey',
+        xp: 0,
+        streak: 0,
+        joinedAt: null,
+        bio: '',
+        location: '',
+      })
+    }
   }
 
   useEffect(() => {
@@ -54,15 +70,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return unsubscribe
   }, [])
 
-  const signInWithGoogle = async () => {
+  // Returns true if login succeeded, false if failed/cancelled
+  const signInWithGoogle = async (): Promise<boolean> => {
     if (!isFirebaseConfigured || !auth) {
       alert('Firebase belum dikonfigurasi.')
-      return
+      return false
     }
     try {
       await signInWithPopup(auth, googleProvider)
-    } catch (error) {
-      console.error('Google sign in error:', error)
+      return true
+    } catch (error: unknown) {
+      const code = (error as { code?: string })?.code
+      if (code !== 'auth/popup-closed-by-user' && code !== 'auth/cancelled-popup-request') {
+        console.error('Google sign in error:', error)
+      }
+      return false
     }
   }
 
