@@ -7,7 +7,8 @@ import { cn } from '@/lib/utils'
 import {
   LayoutDashboard, TrendingUp, BookOpen, Users, Sun,
   BookMarked, PenLine, Calendar, ShoppingBag, UserCheck,
-  Sparkles, Settings, ChevronLeft, ChevronRight, Bell, LogOut
+  Sparkles, Settings, ChevronLeft, ChevronRight, Bell, LogOut,
+  Clock, Calculator, BookText, Moon, Swords, Heart, Radio, MessageCircleQuestion
 } from 'lucide-react'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
@@ -15,8 +16,16 @@ import { Badge } from '@/components/ui/badge'
 const navItems = [
   { href: '/dashboard', icon: LayoutDashboard, label: 'Dashboard', badge: null },
   { href: '/dashboard/tracker', icon: TrendingUp, label: 'Hijrah Tracker', badge: null },
+  { href: '/dashboard/prayer', icon: Clock, label: 'Jadwal Shalat', badge: null },
   { href: '/dashboard/learning', icon: BookOpen, label: 'Learning Center', badge: 'Baru' },
+  { href: '/dashboard/quran-reader', icon: BookText, label: 'Al-Quran Digital', badge: null },
   { href: '/dashboard/community', icon: Users, label: 'Komunitas', badge: '12' },
+  { href: '/dashboard/challenge', icon: Swords, label: 'Challenge Islami', badge: 'Baru' },
+  { href: '/dashboard/mood', icon: Heart, label: 'Mood & Check-in', badge: null },
+  { href: '/dashboard/radio', icon: Radio, label: 'Muslimah Radio', badge: null },
+  { href: '/dashboard/ustadzah', icon: MessageCircleQuestion, label: 'Tanya Ustadzah', badge: null },
+  { href: '/dashboard/ramadhan', icon: Moon, label: 'Ramadhan Mode', badge: null },
+  { href: '/dashboard/calculator', icon: Calculator, label: 'Kalkulator Islami', badge: null },
   { href: '/dashboard/daily', icon: Sun, label: 'Daily Boost', badge: null },
   { href: '/dashboard/quran', icon: BookMarked, label: 'Quran Tracker', badge: null },
   { href: '/dashboard/journal', icon: PenLine, label: 'Jurnal', badge: null },
