@@ -2,15 +2,16 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import { cn } from '@/lib/utils'
+import { useAuth } from '@/lib/auth-context'
 import {
   LayoutDashboard, TrendingUp, BookOpen, Users, Sun,
   BookMarked, PenLine, Calendar, ShoppingBag, UserCheck,
   Sparkles, Settings, ChevronLeft, ChevronRight, Bell, LogOut,
   Clock, Calculator, BookText, Moon, Swords, Heart, Radio, MessageCircleQuestion
 } from 'lucide-react'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Badge } from '@/components/ui/badge'
 
 const navItems = [
@@ -37,7 +38,18 @@ const navItems = [
 
 export function DashboardSidebar() {
   const pathname = usePathname()
+  const router = useRouter()
+  const { user, profile, signOut } = useAuth()
   const [collapsed, setCollapsed] = useState(false)
+
+  const handleSignOut = async () => {
+    await signOut()
+    router.push('/')
+  }
+
+  const displayName = profile?.name || user?.displayName || 'Muslimah'
+  const displayLevel = profile?.level || 'Muslimah Journey'
+  const initials = displayName.split(' ').map((n: string) => n[0]).join('').slice(0, 2).toUpperCase()
 
   return (
     <aside
@@ -106,11 +118,12 @@ export function DashboardSidebar() {
         {!collapsed && (
           <div className="flex items-center gap-3 px-3 py-2.5 rounded-xl bg-muted/50 mb-2">
             <Avatar className="w-8 h-8">
-              <AvatarFallback className="bg-gradient-to-br from-teal-400 to-emerald-600 text-white text-xs font-bold">AN</AvatarFallback>
+              <AvatarImage src={profile?.photoURL || user?.photoURL || ''} alt={displayName} />
+              <AvatarFallback className="bg-gradient-to-br from-teal-400 to-emerald-600 text-white text-xs font-bold">{initials}</AvatarFallback>
             </Avatar>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-foreground truncate">Aisyah N.</p>
-              <p className="text-xs text-teal-600">Consistent Muslimah</p>
+              <p className="text-sm font-semibold text-foreground truncate">{displayName}</p>
+              <p className="text-xs text-teal-600 truncate">{displayLevel}</p>
             </div>
             <Bell className="w-4 h-4 text-muted-foreground" />
           </div>
@@ -119,7 +132,7 @@ export function DashboardSidebar() {
           <Settings className="w-4 h-4 shrink-0" />
           {!collapsed && 'Pengaturan'}
         </Link>
-        <button className={cn('w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm text-muted-foreground hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-950/20 transition-colors', collapsed && 'justify-center px-2')}>
+        <button onClick={handleSignOut} className={cn('w-full flex items-center gap-3 px-3 py-2 rounded-xl text-sm text-muted-foreground hover:bg-red-50 hover:text-red-500 dark:hover:bg-red-950/20 transition-colors', collapsed && 'justify-center px-2')}>
           <LogOut className="w-4 h-4 shrink-0" />
           {!collapsed && 'Keluar'}
         </button>
