@@ -1,6 +1,6 @@
 'use client'
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
-import { User, onAuthStateChanged, signInWithPopup, signOut as firebaseSignOut } from 'firebase/auth'
+import { User, onAuthStateChanged, signInWithPopup, signInWithRedirect, getRedirectResult, signOut as firebaseSignOut } from 'firebase/auth'
 import { auth, googleProvider, isFirebaseConfigured } from './firebase'
 import { createOrUpdateUser, getUserProfile, UserProfile } from './db'
 
@@ -58,6 +58,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false)
       return
     }
+
+    // Handle redirect result on page load (for mobile sign-in flow)
+    getRedirectResult(auth).catch(() => {
+      // No redirect result or error — safe to ignore
+    })
+
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       setUser(firebaseUser)
       if (firebaseUser) {
@@ -70,15 +76,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return unsubscribe
   }, [])
 
-  // Returns true if login succeeded, false if failed/cancelled
+  // Returns true if login succeeded/initiated, false if failed/cancelled
   const signInWithGoogle = async (): Promise<boolean> => {
     if (!isFirebaseConfigured || !auth) {
       alert('Firebase belum dikonfigurasi.')
       return false
     }
     try {
-      await signInWithPopup(auth, googleProvider)
-      return true
+      const isMobile = typeof window !== 'undefined' &&
+        (/Android|iPhone|iPad|iPod|webOS|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth < 768)
+
+      if (isMobile) {
+        await signInWithRedirect(auth, googleProvider)
+        return true // page will redirect to Google; result handled via onAuthStateChanged
+      } else {
+        await signInWithPopup(auth, googleProvider)
+        return true
+      }
     } catch (error: unknown) {
       const code = (error as { code?: string })?.code
       if (code !== 'auth/popup-closed-by-user' && code !== 'auth/cancelled-popup-request') {

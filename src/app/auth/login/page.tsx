@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/lib/auth-context'
@@ -11,8 +11,15 @@ import { Input } from '@/components/ui/input'
 
 export default function LoginPage() {
   const router = useRouter()
-  const { signInWithGoogle } = useAuth()
+  const { signInWithGoogle, user, loading } = useAuth()
   const [showPassword, setShowPassword] = useState(false)
+
+  // Redirect to dashboard when user is authenticated (handles mobile redirect return)
+  useEffect(() => {
+    if (!loading && user) {
+      router.push('/dashboard')
+    }
+  }, [user, loading, router])
   const [isLoading, setIsLoading] = useState(false)
   const [form, setForm] = useState({ email: '', password: '' })
 
